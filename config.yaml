@@ -1,0 +1,63 @@
+# Stem Estimation Workflow Configuration
+# Edit these values or override via command-line / Python API
+
+input:
+  # Folder containing NAIP imagery (GeoTIFFs, any tiling). CRS of these files will be used as target.
+  naip_dir: "/path/to/your/naip_folder"
+
+  # Folder containing 3DEP .las or .laz files. Spatial union with NAIP defines processing extent.
+  las_dir: "/path/to/your/las_folder"
+
+output:
+  # Root output directory (will be created if it doesn't exist)
+  out_dir: "/path/to/output_folder"
+
+  # Output format: "vector" (default: GeoPackage with tile polygons + predictions),
+  # "raster" (GeoTIFF of stem density), or "both"
+  format: "vector"
+
+  # Tile size in meters (square tiles). Default 100 m (1 ha). Common tested values: 50, 100, 200.
+  # Larger tiles generally give higher accuracy but coarser spatial detail.
+  tile_size_m: 100
+
+  # Filename stem for outputs (without extension)
+  basename: "stem_predictions"
+
+models:
+  # === PLACEHOLDERS ===
+  # Download the actual .keras files from the release and place them here (or update paths).
+  # See models/README.md and the main README for hosting details (GitHub Releases recommended).
+  discriminator: "models/discriminator.keras"
+  low_expert:    "models/low_expert.keras"
+  base_expert:   "models/base_expert.keras"
+  high_expert:   "models/high_expert.keras"
+
+  # Optional: path to a JSON file with model metadata (input shape, class mapping, etc.)
+  metadata: "models/model_metadata.json"
+
+preprocessing:
+  # Normalization clipping thresholds (from original training). Values outside are clipped.
+  # After clipping, each band is scaled to [0, 1].
+  normalize:
+    dsm:       [0, 118]   # DSM (max height)
+    intensity: [0, 167]   # LiDAR intensity
+    h1_2:      [0, 100]   # Height slice 1-2 m (point count or density)
+    h2_3:      [0, 100]   # Height slice 2-3 m
+    h3_4:      [0, 100]   # Height slice 3-4 m
+
+  # Future option: provide DEM folder for height-above-ground calculation
+  # ground_dem_dir: "/path/to/dems"
+
+  # Advanced: minimum fraction of valid pixels required in a tile to process it (0.0 - 1.0)
+  min_valid_fraction: 0.5
+
+inference:
+  # Batch size for model inference (adjust based on GPU memory)
+  batch_size: 16
+
+  # Use GPU if available (set to false to force CPU)
+  use_gpu: true
+
+logging:
+  level: "INFO"   # DEBUG, INFO, WARNING, ERROR
+  log_file: "processing_log.txt"

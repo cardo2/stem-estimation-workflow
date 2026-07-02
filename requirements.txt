@@ -1,0 +1,23 @@
+# Core geospatial
+rasterio>=1.3.9
+geopandas>=1.0.1
+shapely>=2.0.6
+laspy>=2.5.0
+numpy>=1.26.0
+pandas>=2.2.0
+tqdm>=4.66.0
+
+# Deep learning (TensorFlow/Keras)
+tensorflow>=2.16.1,<2.18   # Adjust if you have specific CUDA/cuDNN needs
+# For GPU: pip install tensorflow[and-cuda] or follow https://www.tensorflow.org/install/pip
+
+# Optional but recommended for performance / future features
+pyyaml>=6.0
+scipy>=1.13.0
+
+# For nice logging / CLI (future)
+click>=8.1.0
+
+# Development / testing (optional)
+jupyterlab>=4.0
+pytest>=8.0

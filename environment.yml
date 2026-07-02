@@ -1,0 +1,22 @@
+name: stem_estimation
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - rasterio
+  - geopandas
+  - shapely
+  - laspy
+  - numpy
+  - pandas
+  - tqdm
+  - pyyaml
+  - scipy
+  - pip
+  - pip:
+      - tensorflow>=2.16.1,<2.18
+      # GPU users: replace above with tensorflow[and-cuda] or install separately
+      - click
+# After creating env: conda env create -f environment.yml
+# Then: pip install -r requirements.txt  (if additional pins needed)
