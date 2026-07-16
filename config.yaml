@@ -9,7 +9,7 @@ input: # Spatial union between all three files will determine processing extent
   las_dir: "/path/to/your/las_folder"
 
   # Folder containing DEM data.
-  dem_path: "path/to/your/dem.tif"
+  dem_path: "path/to/your/dem_folder"
 
 output:
   # Root output directory (will be created if it doesn't exist)

@@ -1,58 +1,71 @@
-Stem Estimation Workflow
-Mixture-of-Experts Deep Learning for Large-Scale Tree Stem Enumeration
+# Stem Estimation Workflow
+
+**Mixture-of-Experts Deep Learning for Large-Scale Tree Stem Enumeration**
+
 This repository contains the complete, reproducible workflow for the paper:
-Ardohain, C., Willsey, S., & Fei, S. (2026). A Novel Architecture with Mixture of Deep Learning Experts for Large Scale Stem Enumeration. *Yet to be published*
 
-Overview
-The workflow takes publicly available remote sensing data and produces tree stem density estimates (stems/ha) using a Mixture-of-Experts (MoE) convolutional neural network.
-Required Inputs:
+**Ardohain, C., Willsey, S., & Fei, S. (2026).** *A Novel Architecture with Mixture of Deep Learning Experts for Large Scale Stem Enumeration. Pending Publication*
 
-NAIP imagery (4-band: RGB + NIR)
-3DEP LiDAR point clouds (.las / .laz)
-DEM (Digital Elevation Model)
+---
 
-The processing extent is automatically determined by the intersection of the NAIP, LAS, and DEM. Height slices are calculated as height above ground using the DEM.
-Default height bins: 2–2.66 m, 2.67–3.33 m, 3.34–4 m
+## Overview
 
-Key Features
+The workflow converts publicly available remote sensing data into tree stem density estimates (stems/ha) using a Mixture-of-Experts (MoE) convolutional neural network.
 
-Height-above-ground calculation using DEM
-Configurable tile size (default 100 m)
-Outputs stem density predictions with model used (low / base / high)
-Vector output (GeoPackage) by default + optional raster output
-Fully documented and modular Python code
+**Required Inputs (all three):**
+- `naip/` — Folder containing 4-band NAIP imagery (RGB + NIR)
+- `las/` — Folder containing 3DEP LiDAR files (.las or .laz)
+- `dem/` — Folder containing DEM files (.tif or .img)
 
+The processing extent is the **intersection** of the NAIP, LAS, and DEM. Height slices are calculated as **height above ground** using the DEM.
 
-Quick Start
-1. Clone and Install
-Bashgit clone https://github.com/cardo2/stem-estimation-workflow.git
+Default height bins: **2–2.66 m, 2.67–3.33 m, 3.34–4 m**
+
+---
+
+## Key Features
+
+- Height-above-ground calculation using DEM
+- Supports multiple DEM tiles (they are merged automatically)
+- Configurable tile size (default 100 m)
+- Outputs stem density predictions + which expert model was used
+- Vector output (GeoPackage) by default + optional raster
+
+---
+
+## Quick Start
+
+### 1. Clone and Install
+
+```bash
+git clone https://github.com/cardo2/stem-estimation-workflow.git
 cd stem-estimation-workflow
 
 # Recommended
 conda env create -f environment.yml
 conda activate stem_estimation
-2. Prepare Data
+2. Prepare Your Data
 Organize your data like this:
 textyour_data/
 ├── naip/           # Folder with 4-band NAIP .tif files
 ├── las/            # Folder with 3DEP .las or .laz files
-└── dem.tif         # Your DEM file
+└── dem/            # Folder with DEM .tif or .img files
 NAIP Requirements
-The code requires 4-band (Red, Green, Blue, Near-Infrared) GeoTIFFs.
-Most modern NAIP data is available as 4-band. If you only have separate RGB and CIR downloads, you must merge them into a single 4-band file first.
+The workflow requires 4-band (Red, Green, Blue, Near-Infrared) GeoTIFFs.
+Most modern NAIP data is available directly as 4-band. If you only have separate RGB and CIR downloads, merge them into a single 4-band file first.
 DEM Requirement
-A DEM is required. It is used to calculate height above ground for the vegetation structure layers.
+A dem/ folder is required. It can contain one or multiple DEM tiles — the code will merge them automatically.
 
 Configuration
-Edit the config.yaml file:
+Edit config.yaml:
 YAMLinput:
   naip_dir: "path/to/your/naip"
   las_dir:  "path/to/your/las"
-  dem_path: "path/to/your/dem.tif"
+  dem_dir:  "path/to/your/dem"        # Folder containing DEM files
 
 output:
   out_dir: "./output"
-  format: "vector"        # Options: vector, raster, both
+  format: "vector"          # "vector", "raster", or "both"
   tile_size_m: 100
   basename: "stem_predictions"
 
@@ -66,25 +79,24 @@ Running the Pipeline
 Bashpython -m stem_estimation.pipeline --config config.yaml
 The pipeline will:
 
-Process LAS + DEM into rasters (DSM, Intensity, height-above-ground slices)
-Stack with NAIP and normalize the data
-Create analysis tiles over the common extent
-Run the Mixture-of-Experts model
-Save results (vector predictions by default)
+Merge DEMs (if multiple) and calculate height above ground
+Process LAS into rasters using height-above-ground slices
+Stack with NAIP and normalize
+Create tiles over the common extent
+Run Mixture-of-Experts inference
+Save predictions
 
 
 Output
-By default, the workflow produces:
+Default output:
 
-stem_predictions.gpkg — Vector file with tile polygons and predicted stem density
-Intermediate rasters in the output folder (optional)
+stem_predictions.gpkg — Vector file with predicted stem density per tile
+Optional raster output (change in config.yaml)
 
-You can change the output format in config.yaml.
 
 Models
-The trained models are available via GitHub Releases.
-Download the four .keras files and place them in the models/ folder, or update the paths in your config.yaml.
+Download the trained models from GitHub Releases and place them in the models/ folder.
 
 Citation
-If you use this code or workflow, please cite the original paper:
-Ardohain, C., Willsey, S., & Fei, S. (2026). A Novel Architecture with Mixture of Deep Learning Experts for Large Scale Stem Enumeration. International Journal of Applied Earth Observation and Geoinformation.
+Please cite the original paper if you use this workflow:
+Ardohain, C., Willsey, S., & Fei, S. (2026). A Novel Architecture with Mixture of Deep Learning Experts for Large Scale Stem Enumeration. *Pending Publication*

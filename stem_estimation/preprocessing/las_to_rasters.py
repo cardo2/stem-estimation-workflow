@@ -151,11 +151,10 @@ def process_las_folder(las_dir: str | Path,
                        output_dir: str | Path,
                        resolution: float = 1.0,
                        height_bins: Optional[List[Tuple[float, float]]] = None,
-                       dem_path: Optional[str] = None,
+                       dem_dir: Optional[str] = None,
                        overwrite: bool = False) -> Dict[str, Path]:
     """
-    Process all .las/.laz files and produce rasters.
-    If dem_path is provided, height slices are calculated above ground.
+    Process LAS folder. Supports a folder of DEMs (will merge them).
     """
     las_dir = Path(las_dir)
     output_dir = Path(output_dir)
@@ -168,7 +167,6 @@ def process_las_folder(las_dir: str | Path,
     logger.info(f"Found {len(las_files)} LAS/LAZ files in {las_dir}")
 
     bounds, crs = get_las_bounds_and_crs(las_files)
-    logger.info(f"Global bounds: {bounds}, CRS: {crs}")
 
     dsm_full, transform, profile = create_empty_raster(bounds, resolution, crs)
     intensity_full = np.full_like(dsm_full, np.nan)
@@ -176,25 +174,36 @@ def process_las_folder(las_dir: str | Path,
               for b in (height_bins or [(2.0, 2.66), (2.67, 3.33), (3.34, 4.0)]) }
 
     ground_elev = None
-    if dem_path:
-        dem_path = Path(dem_path)
-        if dem_path.exists():
-            with rasterio.open(dem_path) as dem_src:
+    if dem_dir:
+        dem_dir = Path(dem_dir)
+        dem_files = list(dem_dir.glob("*.tif")) + list(dem_dir.glob("*.img"))
+        
+        if dem_files:
+            logger.info(f"Found {len(dem_files)} DEM file(s) in {dem_dir}. Merging...")
+            with rasterio.open(dem_files[0]) as src:
                 ground_elev = np.full((profile["height"], profile["width"]), np.nan, dtype=np.float32)
-                reproject(
-                    source=rasterio.band(dem_src, 1),
-                    destination=ground_elev,
-                    src_transform=dem_src.transform,
-                    src_crs=dem_src.crs,
-                    dst_transform=transform,
-                    dst_crs=crs,
-                    resampling=Resampling.bilinear,
-                )
-                if dem_src.nodata is not None:
-                    ground_elev[ground_elev == dem_src.nodata] = np.nan
-            logger.info(f"Loaded and aligned DEM from {dem_path}")
+            
+            # Merge all DEMs
+            sources = [rasterio.open(f) for f in dem_files]
+            mosaic, out_trans = merge(sources)
+            
+            # Reproject mosaic to our target grid
+            reproject(
+                source=mosaic,
+                destination=ground_elev,
+                src_transform=sources[0].transform,
+                src_crs=sources[0].crs,
+                dst_transform=transform,
+                dst_crs=crs,
+                resampling=Resampling.bilinear,
+            )
+            
+            for src in sources:
+                src.close()
+            
+            logger.info("DEM merged and aligned successfully.")
         else:
-            logger.warning(f"DEM not found at {dem_path}. Using absolute Z instead.")
+            logger.warning(f"No DEM files found in {dem_dir}")
 
     for las_path in tqdm(las_files, desc="Processing LAS files"):
         try:
@@ -205,6 +214,7 @@ def process_las_folder(las_dir: str | Path,
             logger.warning(f"Failed to process {las_path.name}: {e}")
             continue
 
+        # Merge logic (same as before)
         valid = ~np.isnan(rasters["dsm"])
         dsm_full[valid] = np.maximum(dsm_full[valid], rasters["dsm"][valid])
 
@@ -215,7 +225,7 @@ def process_las_folder(las_dir: str | Path,
             if name in rasters:
                 h_full[name] = np.maximum(h_full[name], rasters[name])
 
-    # Write outputs
+    # Write outputs (same as before)
     outputs = {}
     profile.update(count=1)
 
