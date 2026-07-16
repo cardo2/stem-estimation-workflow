@@ -1,12 +1,15 @@
 # Stem Estimation Workflow Configuration
 # Edit these values or override via command-line / Python API
 
-input:
+input: # Spatial union between all three files will determine processing extent
   # Folder containing NAIP imagery (GeoTIFFs, any tiling). CRS of these files will be used as target.
   naip_dir: "/path/to/your/naip_folder"
 
-  # Folder containing 3DEP .las or .laz files. Spatial union with NAIP defines processing extent.
+  # Folder containing 3DEP .las or .laz files. 
   las_dir: "/path/to/your/las_folder"
+
+  # Folder containing DEM data.
+  dem_path: "path/to/your/dem.tif"
 
 output:
   # Root output directory (will be created if it doesn't exist)

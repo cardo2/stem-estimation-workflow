@@ -87,7 +87,8 @@ def run_pipeline(config_path: str | Path = "config.yaml") -> None:
     lidar_rasters = process_las_folder(
         las_dir=las_dir,
         output_dir=lidar_out,
-        resolution=1.0
+        resolution=1.0,
+        dem_path=config["input"].get("dem_path")
     )
 
     # 2. Stack + normalize with NAIP
