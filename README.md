@@ -85,6 +85,11 @@ your_data/
 
 **Recommended data sources**:
 - **NAIP**: USDA NRCS Geospatial Data Gateway, AWS Registry of Open Data, or USGS EarthExplorer.
+  **NAIP Imagery Requirements**
+  The workflow expects **4-band (Red, Green, Blue, Near-Infrared) GeoTIFFs**.
+  Most modern NAIP collections are available directly as 4-band files.  
+  If you only have separate RGB and CIR downloads, you must merge them into one 4-band file first (using QGIS, GDAL, or rasterio).
+  Place all your final **4-band GeoTIFFs** in the `naip/` folder.
 - **3DEP LiDAR (LAS)**: USGS The National Map, AWS, or state repositories. Prefer leaf-off collections when possible.
 - Optional but helpful: Co-located DEMs from 3DEP for more accurate height-above-ground slices (future enhancement).
 
