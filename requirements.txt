@@ -8,7 +8,7 @@ pandas>=2.2.0
 tqdm>=4.66.0
 
 # Deep learning (TensorFlow/Keras)
-tensorflow>=2.16.1,<2.18   # Adjust if you have specific CUDA/cuDNN needs
+tensorflow>=2.16   # Adjust if you have specific CUDA/cuDNN needs
 # For GPU: pip install tensorflow[and-cuda] or follow https://www.tensorflow.org/install/pip
 
 # Optional but recommended for performance / future features

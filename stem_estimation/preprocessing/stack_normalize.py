@@ -1,151 +1,168 @@
 """
-Stack NAIP + LiDAR-derived rasters into a single 9-band GeoTIFF and normalize.
+Align LiDAR layers + NAIP, normalize to 0–254 uint8, write stacked GeoTIFFs.
 
-Band order (channels last):
-0: DSM
-1: Intensity
-2: h1_2 (1-2 m)
-3: h2_3 (2-3 m)
-4: h3_4 (3-4 m)
-5: Red   (NAIP)
-6: Green (NAIP)
-7: Blue  (NAIP)
-8: NIR   (NAIP)
-
-Normalization: clip using thresholds in config, then scale each band to [0, 1].
+Band order (fixed):
+  1 CHM | 2 Intensity | 3 h1_2 | 4 h2_3 | 5 h3_4
+  6 NAIP-R | 7 NAIP-G | 8 NAIP-B | 9 NAIP-NIR
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import rasterio
-from rasterio.warp import reproject, Resampling, calculate_default_transform
-from rasterio.merge import merge
+from rasterio.warp import reproject, Resampling, transform_bounds
+from shapely.geometry import box
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_THRESHOLDS = {
+    "chm": (0.0, 118.0),
+    "intensity": (0.0, 43000.0),
+    "h1_2": (0.0, 100.0),
+    "h2_3": (0.0, 100.0),
+    "h3_4": (0.0, 100.0),
+}
 
-def find_files(folder: Path, patterns: List[str]) -> List[Path]:
-    files = []
+LIDAR_KEYS = ["chm", "intensity", "h1_2", "h2_3", "h3_4"]
+
+
+def _norm_to_254(data: np.ndarray, mn: float, mx: float) -> np.ndarray:
+    data = np.clip(data.astype(np.float32), mn, mx)
+    scaled = (data - mn) * (254.0 / max(mx - mn, 1e-6))
+    return np.clip(scaled, 0, 254).astype(np.uint8)
+
+
+def _find_files(folder: Path, patterns: List[str]) -> List[Path]:
+    files: List[Path] = []
     for pat in patterns:
         files.extend(sorted(folder.glob(pat)))
     return files
 
 
-def get_reference_profile(naip_files: List[Path]) -> Dict:
-    """Use the first NAIP file as the reference grid / CRS / resolution."""
-    with rasterio.open(naip_files[0]) as src:
-        profile = src.profile.copy()
-        profile.update(count=9, dtype="float32", nodata=-9999.0)
-        return profile, src.transform, src.crs, src.res
-
-
-def align_and_stack(naip_dir: Path,
-                    lidar_rasters: Dict[str, Path],
-                    output_path: Path,
-                    normalize_config: Dict[str, List[float]],
-                    resolution: float = 1.0) -> Path:
+def stack_one_tile(
+    stem: str,
+    lidar_dir: Path,
+    naip_files: List[Path],
+    out_dir: Path,
+    thresholds: Dict[str, Tuple[float, float]] = None,
+) -> Optional[Path]:
     """
-    Align all LiDAR layers to NAIP grid, stack with NAIP bands, normalize, and write 9-band stack.
+    Stack one complete set of LiDAR layers + overlapping NAIP.
+    Grid is taken from the CHM (which is already DEM-aligned).
     """
-    naip_files = find_files(naip_dir, ["*.tif", "*.tiff"])
-    if not naip_files:
-        raise ValueError(f"No NAIP GeoTIFFs found in {naip_dir}")
+    thresholds = thresholds or DEFAULT_THRESHOLDS
+    required = {k: lidar_dir / f"{stem}_{k}.tif" for k in LIDAR_KEYS}
+    if not all(p.exists() for p in required.values()):
+        logger.warning(f"{stem}: missing LiDAR layer(s) – skipped")
+        return None
 
-    ref_profile, ref_transform, ref_crs, ref_res = get_reference_profile(naip_files)
+    with rasterio.open(required["chm"]) as src:
+        master_crs = src.crs
+        master_transform = src.transform
+        master_w, master_h = src.width, src.height
+        master_bounds = src.bounds
 
-    # For simplicity in v1: assume NAIP is already ~1 m and we reproject LiDAR to it.
-    # In production, use a more robust mosaic + reproject workflow.
+    # --- LiDAR bands ---
+    lidar_norm = []
+    for key in LIDAR_KEYS:
+        with rasterio.open(required[key]) as src:
+            data = src.read(1).astype(np.float32)
+        mn, mx = thresholds[key]
+        lidar_norm.append(_norm_to_254(data, mn, mx))
 
-    logger.info(f"Reference NAIP CRS: {ref_crs}, transform: {ref_transform}")
-
-    # Read and reproject each LiDAR layer to reference grid
-    band_data = []
-    band_names = ["dsm", "intensity", "h1_2", "h2_3", "h3_4"]
-
-    for bname in band_names:
-        if bname not in lidar_rasters:
-            logger.warning(f"Missing LiDAR band: {bname}. Filling with zeros.")
-            # Create zero array matching reference shape
-            with rasterio.open(naip_files[0]) as src:
-                zeros = np.zeros((src.height, src.width), dtype=np.float32)
-            band_data.append(zeros)
-            continue
-
-        src_path = lidar_rasters[bname]
-        with rasterio.open(src_path) as src:
-            # Reproject to reference
-            dst_array = np.empty((ref_profile["height"], ref_profile["width"]), dtype=np.float32)
-            reproject(
-                source=rasterio.band(src, 1),
-                destination=dst_array,
-                src_transform=src.transform,
-                src_crs=src.crs,
-                dst_transform=ref_transform,
-                dst_crs=ref_crs,
-                resampling=Resampling.bilinear,
-            )
-            band_data.append(dst_array)
-
-    # Now add NAIP bands (assume 4-band NAIP)
-    for naip_path in tqdm(naip_files, desc="Processing NAIP tiles"):
+    # --- NAIP (first overlapping file) ---
+    naip_stack = np.zeros((4, master_h, master_w), dtype=np.float32)
+    found = False
+    for naip_path in naip_files:
         with rasterio.open(naip_path) as src:
-            for b in range(1, 5):
-                arr = src.read(b).astype(np.float32)
-                # Simple mosaic: take first valid or last tile wins for overlapping NAIP
-                # For production use rasterio.merge or exact grid handling
-                if len(band_data) < 5 + b:
-                    band_data.append(arr)
-                else:
-                    # Placeholder: last tile wins
-                    mask = arr != src.nodata
-                    band_data[4 + b][mask] = arr[mask]
+            try:
+                nb = transform_bounds(src.crs, master_crs, *src.bounds)
+            except Exception:
+                continue
+            if not box(*nb).intersects(box(*master_bounds)):
+                continue
+            for b in range(min(4, src.count)):
+                reproject(
+                    source=rasterio.band(src, b + 1),
+                    destination=naip_stack[b],
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=master_transform,
+                    dst_crs=master_crs,
+                    resampling=Resampling.bilinear,
+                    dst_nodata=0,
+                )
+            found = True
+            logger.info(f"{stem}: NAIP = {naip_path.name}")
+            break
 
-    # At this point band_data should have 9 arrays. Stack them.
-    if len(band_data) != 9:
-        logger.warning(f"Expected 9 bands, got {len(band_data)}. Padding/truncating.")
-        while len(band_data) < 9:
-            band_data.append(np.zeros_like(band_data[0]))
-        band_data = band_data[:9]
+    if not found:
+        logger.warning(f"{stem}: no overlapping NAIP – skipped")
+        return None
 
-    stack = np.stack(band_data, axis=0).astype(np.float32)  # (9, H, W)
+    naip_norm = np.clip(naip_stack, 0, 255).astype(np.uint8)
+    stacked = np.concatenate([np.stack(lidar_norm, axis=0), naip_norm], axis=0)
 
-    # Normalize (clip + scale to [0,1])
-    thresholds = {
-        0: normalize_config.get("dsm", [0, 118]),
-        1: normalize_config.get("intensity", [0, 167]),
-        2: normalize_config.get("h1_2", [0, 100]),
-        3: normalize_config.get("h2_3", [0, 100]),
-        4: normalize_config.get("h3_4", [0, 100]),
-        # NAIP bands: usually 0-255 or 0-10000; simple min-max or assume already suitable
-        5: normalize_config.get("red", [0, 255]),
-        6: normalize_config.get("green", [0, 255]),
-        7: normalize_config.get("blue", [0, 255]),
-        8: normalize_config.get("nir", [0, 255]),
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{stem}_stacked.tif"
+    profile = {
+        "driver": "GTiff",
+        "height": master_h,
+        "width": master_w,
+        "count": 9,
+        "dtype": "uint8",
+        "crs": master_crs,
+        "transform": master_transform,
+        "nodata": 255,
+        "compress": "deflate",
     }
+    with rasterio.open(out_path, "w", **profile) as dst:
+        dst.write(stacked)
+        dst.descriptions = (
+            "CHM", "Intensity", "h1_2", "h2_3", "h3_4",
+            "NAIP_R", "NAIP_G", "NAIP_B", "NAIP_NIR",
+        )
 
-    for b in range(9):
-        lo, hi = thresholds.get(b, [0, 1])
-        band = stack[b]
-        band = np.clip(band, lo, hi)
-        if hi > lo:
-            band = (band - lo) / (hi - lo)
-        stack[b] = np.nan_to_num(band, nan=0.0).astype(np.float32)
-
-    # Write multi-band stack
-    out_profile = ref_profile.copy()
-    out_profile.update(count=9, dtype="float32", nodata=-9999.0, compress="deflate")
-
-    with rasterio.open(output_path, "w", **out_profile) as dst:
-        dst.write(stack)
-
-    logger.info(f"9-band normalized stack written to {output_path}")
-    return output_path
+    logger.info(f"{stem}: wrote {out_path.name}  shape={stacked.shape}")
+    return out_path
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    # Example call would go here
-    print("stack_normalize module loaded.")
+def align_and_stack(
+    lidar_dir: str | Path,
+    naip_dir: str | Path,
+    output_dir: str | Path,
+    thresholds: Dict[str, Tuple[float, float]] = None,
+    max_tiles: Optional[int] = None,
+) -> List[Path]:
+    """
+    Stack every complete LiDAR tile that has overlapping NAIP.
+    Set max_tiles to limit for testing.
+    """
+    lidar_dir = Path(lidar_dir)
+    naip_dir = Path(naip_dir)
+    output_dir = Path(output_dir)
+    thresholds = thresholds or DEFAULT_THRESHOLDS
+
+    chm_files = sorted(lidar_dir.glob("*_chm.tif"))
+    naip_files = _find_files(naip_dir, ["*.tif", "*.tiff", "*.TIF", "*.TIFF"])
+    if not chm_files:
+        raise ValueError(f"No *_chm.tif files in {lidar_dir}")
+    if not naip_files:
+        raise ValueError(f"No NAIP files in {naip_dir}")
+
+    results = []
+    for chm in tqdm(chm_files, desc="Stacking"):
+        if max_tiles is not None and len(results) >= max_tiles:
+            break
+        stem = chm.name.replace("_chm.tif", "")
+        path = stack_one_tile(stem, lidar_dir, naip_files, output_dir, thresholds)
+        if path is not None:
+            results.append(path)
+
+    logger.info(f"Stacked {len(results)} tiles → {output_dir}")
+    return results

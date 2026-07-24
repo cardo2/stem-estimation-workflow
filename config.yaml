@@ -1,30 +1,16 @@
 # Stem Estimation Workflow Configuration
 # Edit these values or override via command-line / Python API
 
-input: # Spatial union between all three files will determine processing extent
-  # Folder containing NAIP imagery (GeoTIFFs, any tiling). CRS of these files will be used as target.
-  naip_dir: "/path/to/your/naip_folder"
-
-  # Folder containing 3DEP .las or .laz files. 
-  las_dir: "/path/to/your/las_folder"
-
-  # Folder containing DEM data.
-  dem_path: "path/to/your/dem_folder"
+input:
+  naip_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/naip"
+  las_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/las"
+  dem_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/dem_tif"
 
 output:
-  # Root output directory (will be created if it doesn't exist)
-  out_dir: "/path/to/output_folder"
-
-  # Output format: "vector" (default: GeoPackage with tile polygons + predictions),
-  # "raster" (GeoTIFF of stem density), or "both"
-  format: "vector"
-
-  # Tile size in meters (square tiles). Default 100 m (1 ha). Common tested values: 50, 100, 200.
-  # Larger tiles generally give higher accuracy but coarser spatial detail.
+  out_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/preprocessed/test_01"
+  format: "raster"          # for this test we only want the stacked raster
   tile_size_m: 100
-
-  # Filename stem for outputs (without extension)
-  basename: "stem_predictions"
+  basename: "test_stack"
 
 models:
   # === PLACEHOLDERS ===
@@ -39,20 +25,20 @@ models:
   metadata: "models/model_metadata.json"
 
 preprocessing:
-  # Normalization clipping thresholds (from original training). Values outside are clipped.
-  # After clipping, each band is scaled to [0, 1].
+  resolution_m: 1.0
+  height_bins_m:
+    - [1.0, 2.0]
+    - [2.0, 3.0]
+    - [3.0, 4.0]
+  fill_intensity_gaps: true
   normalize:
-    dsm:       [0, 118]   # DSM (max height)
-    intensity: [0, 167]   # LiDAR intensity
-    h1_2:      [0, 100]   # Height slice 1-2 m (point count or density)
-    h2_3:      [0, 100]   # Height slice 2-3 m
-    h3_4:      [0, 100]   # Height slice 3-4 m
-
-  # Future option: provide DEM folder for height-above-ground calculation
-  # ground_dem_dir: "/path/to/dems"
-
-  # Advanced: minimum fraction of valid pixels required in a tile to process it (0.0 - 1.0)
-  min_valid_fraction: 0.5
+    chm: [0, 118]          # feet above ground
+    intensity: [0, 43000]   # LAS mean intensity (16-bit)
+    h1_2: [0, 100]
+    h2_3: [0, 100]
+    h3_4: [0, 100]
+    min_valid_fraction: 0.5
+  tile_size: 100            # default; overridable
 
 inference:
   # Batch size for model inference (adjust based on GPU memory)
