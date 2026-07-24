@@ -1,27 +1,22 @@
 # Stem Estimation Workflow Configuration
-# Edit these values or override via command-line / Python API
+# Edit paths for your local data layout.
 
 input:
-  naip_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/naip"
-  las_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/las"
-  dem_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/dem_tif"
+  naip_dir: "./data/naip"      # 4-band NAIP GeoTIFFs
+  las_dir: "./data/las"        # 3DEP .las / .laz
+  dem_dir: "./data/dem"        # 1 m DEM GeoTIFFs (pixel-grid anchor)
 
 output:
-  out_dir: "C:/Users/christopher.ardohain/OneDrive/Chris_Work/Purdue/stem_estimation/data/preprocessed/test_01"
-  format: "raster"          # for this test we only want the stacked raster
-  tile_size_m: 100
-  basename: "test_stack"
+  out_dir: "./output"
+  format: "vector"             # vector | raster | both
+  tile_size_m: 100             # chip size in meters (1 m pixels → 100 px)
+  basename: "stem_predictions"
 
 models:
-  # === PLACEHOLDERS ===
-  # Download the actual .keras files from the release and place them here (or update paths).
-  # See models/README.md and the main README for hosting details (GitHub Releases recommended).
   discriminator: "models/discriminator.keras"
-  low_expert:    "models/low_expert.keras"
-  base_expert:   "models/base_expert.keras"
-  high_expert:   "models/high_expert.keras"
-
-  # Optional: path to a JSON file with model metadata (input shape, class mapping, etc.)
+  low_expert: "models/low_expert.keras"
+  base_expert: "models/base_expert.keras"
+  high_expert: "models/high_expert.keras"
   metadata: "models/model_metadata.json"
 
 preprocessing:
@@ -32,21 +27,18 @@ preprocessing:
     - [3.0, 4.0]
   fill_intensity_gaps: true
   normalize:
-    chm: [0, 118]          # feet above ground
-    intensity: [0, 43000]   # LAS mean intensity (16-bit)
+    chm: [0, 118]              # feet above ground
+    intensity: [0, 43000]      # LAS mean intensity (16-bit)
     h1_2: [0, 100]
     h2_3: [0, 100]
     h3_4: [0, 100]
     min_valid_fraction: 0.5
-  tile_size: 100            # default; overridable
+  tile_size: 100
 
 inference:
-  # Batch size for model inference (adjust based on GPU memory)
   batch_size: 16
-
-  # Use GPU if available (set to false to force CPU)
   use_gpu: true
 
 logging:
-  level: "INFO"   # DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
   log_file: "processing_log.txt"

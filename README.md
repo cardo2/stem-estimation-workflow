@@ -19,7 +19,8 @@ The workflow converts publicly available remote sensing data into tree stem dens
 
 The processing extent is the **intersection** of the NAIP, LAS, and DEM. Height slices are calculated as **height above ground** using the DEM.
 
-Default height bins: **2–2.66 m, 2.67–3.33 m, 3.34–4 m**
+Height-above-ground percentage layers: 1–2 m, 2–3 m, and 3–4 m AGL
+(percentage of non-ground returns per 1 m cell; DEM is the 1 m pixel-grid anchor).
 
 ---
 
