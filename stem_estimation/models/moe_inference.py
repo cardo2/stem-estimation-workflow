@@ -113,3 +113,47 @@ def check_model_input_shape(model: keras.Model, expected_bands: int = 9):
     logger.info(f"Model expects input shape: {input_shape}")
     if input_shape[-1] != expected_bands:
         logger.warning(f"Model channel dimension {input_shape[-1]} != expected {expected_bands}")
+
+def run_moe_on_chip_folder(
+    chip_dir: str | Path,
+    model_paths: Dict[str, str],
+    batch_size: int = 16,
+    nodata: int = 255,
+    pattern: str = "chip_*.tif",
+) -> List[Dict]:
+    """
+    Run MoE on pre-written chip GeoTIFFs (uint8 0–254, channels-first on disk).
+    Scales to float32 [0, 1], channels-last, then uses predict_tile().
+    """
+    chip_dir = Path(chip_dir)
+    files = sorted(chip_dir.glob(pattern))
+    if not files:
+        raise ValueError(f"No chips matching {pattern} in {chip_dir}")
+
+    models = load_models(model_paths)
+    results: List[Dict] = []
+
+    for f in files:
+        with rasterio.open(f) as src:
+            data = src.read()  # (9, H, W) uint8
+            arr = data.astype(np.float32)
+            arr[data == nodata] = 0.0
+            arr = arr / 254.0
+            arr = np.transpose(arr, (1, 2, 0))  # (H, W, 9)
+
+            pred_density, model_used = predict_tile(arr, models, batch_size=batch_size)
+            b = src.bounds
+            results.append({
+                "chip_id": f.stem,
+                "path": str(f),
+                "predicted_stems_per_ha": round(float(pred_density), 2),
+                "model_used": model_used,
+                "west": float(b.left),
+                "south": float(b.bottom),
+                "east": float(b.right),
+                "north": float(b.top),
+                "crs": src.crs.to_string() if src.crs else None,
+            })
+
+    logger.info(f"MoE inference completed on {len(results)} chips.")
+    return results

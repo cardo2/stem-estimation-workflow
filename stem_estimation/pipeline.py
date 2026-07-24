@@ -18,7 +18,7 @@ from typing import Dict, Any, Optional
 # Internal imports
 from .preprocessing.las_to_rasters import process_las_folder
 from .preprocessing.stack_normalize import align_and_stack
-from .preprocessing.tile_raster import generate_tile_grid
+from .preprocessing.tile_raster import tile_mosaic
 from .models.moe_inference import run_moe_on_tiles
 from .postprocessing.outputs import write_vector_output, write_raster_output, write_summary
 
